@@ -1,17 +1,23 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
+
 // Components
 import Item from './Cart/Item/Item';
 import Cart from './Cart/Cart';
+import Purchases from './Purchases/Purchases';
+import ItemDialog from './Dialogs/ItemDialog/ItemDialog';
+import PurchaseDialog from './Dialogs/PurchaseDialog/PurchaseDialog';
 import Drawer from '@material-ui/core/Drawer';
 import LinearProgress from '@material-ui/core/LinearProgress';
 import Grid from '@material-ui/core/Grid';
 import AddShoppingCartIcon from '@material-ui/icons/AddShoppingCart';
 import RestoreIcon from '@material-ui/icons/Restore';
 import Badge from '@material-ui/core/Badge';
+
 // Styles
 import { Wrapper, StyledButton, StyledAppBar, HeaderTypography } from './App.styles';
-import { AppBar, Toolbar, Typography } from '@material-ui/core';
+import { Toolbar, Typography } from '@material-ui/core';
+
 // Types
 export type CartItemType = {
   id: number;
@@ -23,18 +29,41 @@ export type CartItemType = {
   amount: number;
 };
 
+//Construct new type for purchaseItems, including an order id, the items included in the order and the total price of order
+export type PurchaseItemType = {
+  id: number;
+  items: CartItemType[];
+  total: number;
+};
 
 const getCheeses = async (): Promise<CartItemType[]> =>
   await (await fetch(`api/cheeses`)).json();
 
+const getPurchases = async (): Promise<PurchaseItemType[]> =>
+  await (await fetch(`api/purchases`)).json();
+
 const App = () => {
   const [cartOpen, setCartOpen] = useState(false);
+  const [purchasesOpen, setPurchasesOpen] = useState(false);
   const [cartItems, setCartItems] = useState([] as CartItemType[]);
+  const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [clickedItem, setClickedItem] = useState({} as CartItemType);
+  const [purchaseDialogOpen, setPurchaseDialogOpen] = useState(false);
   const { data, isLoading, error } = useQuery<CartItemType[]>(
     'cheeses',
     getCheeses
   );
   console.log(data);
+
+  const { 
+    data: purchaseData,
+    isLoading: purchasesLoading,
+    error: purchasesError,
+    refetch: refetchPurchases
+  } = useQuery<PurchaseItemType[]>(
+    'purchases',
+    getPurchases
+  );
 
   const getTotalItems = (items: CartItemType[]) =>
     items.reduce((ack: number, item) => ack + item.amount, 0);
@@ -69,8 +98,38 @@ const App = () => {
     );
   };
 
-  if (isLoading) return <LinearProgress />;
-  if (error) return <div>Something went wrong ...</div>;
+  // Remove cart items and close cart drawer
+  const clearCart = () => {
+    setCartItems([]);
+    setCartOpen(false);
+  };
+
+  //  User feedback when purchase is made
+  const purchaseMade = () => {
+    setPurchaseDialogOpen(true);
+  }
+
+  const handleOpenRecentPurchases = () => {
+    refetchPurchases(); //Refresh purchases by refetching data
+    setPurchasesOpen(true); //open purchase drawer
+  };
+
+
+  const handleOpenItemDialog = (item: CartItemType) => {
+    setClickedItem(item);
+    setItemDialogOpen(true);
+  }
+
+  const handleCloseItemDialog = () => {
+    setItemDialogOpen(false);
+  };
+
+  const handleClosePurchaseDialog = () => {
+    setPurchaseDialogOpen(false);
+  }
+
+  if (isLoading || purchasesLoading) return <LinearProgress />;
+  if (error || purchasesError) return <div>Something went wrong ...</div>;
 
   return (
 
@@ -83,7 +142,7 @@ const App = () => {
             justify="space-between"
             alignItems="center"
           >
-            <StyledButton>
+            <StyledButton onClick={() => handleOpenRecentPurchases()} data-cy="open-purchases">
               <RestoreIcon />
               <Typography variant="subtitle2">
                 Recent Purchases
@@ -94,7 +153,10 @@ const App = () => {
               Welcome to Patient Zero's Cheeseria
             </HeaderTypography>
 
-            <StyledButton onClick={() => setCartOpen(true)}>
+            <StyledButton
+              onClick={() => setCartOpen(true)}
+              data-cy="open-cart"
+            >
               <Badge
                 badgeContent={getTotalItems(cartItems)}
                 color='error'
@@ -116,16 +178,41 @@ const App = () => {
           cartItems={cartItems}
           addToCart={handleAddToCart}
           removeFromCart={handleRemoveFromCart}
+          clearCart={clearCart}
+          purchaseMade={purchaseMade}
+        />
+      </Drawer>
+
+      <Drawer anchor='left' open={purchasesOpen} onClose={() => setPurchasesOpen(false)}>
+        <Purchases
+          purchases={purchaseData ?? []}
         />
       </Drawer>
 
       <Grid container spacing={3}>
         {data?.map(item => (
           <Grid item key={item.id} xs={12} sm={4}>
-            <Item item={item} handleAddToCart={handleAddToCart} />
+            <Item 
+              item={item}
+              handleAddToCart={handleAddToCart}
+              handleOpenDialog={handleOpenItemDialog}
+            />
           </Grid>
         ))}
       </Grid>
+
+      <ItemDialog
+        open={itemDialogOpen}
+        item={clickedItem}
+        handleClose={handleCloseItemDialog}
+        handleAddCart={handleAddToCart}
+      />
+
+      <PurchaseDialog
+        open={purchaseDialogOpen}
+        handleClose={handleClosePurchaseDialog}
+      />
+      
     </Wrapper>
 
   );
